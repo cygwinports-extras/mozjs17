@@ -1,0 +1,279 @@
+--- origsrc/mozjs17.0.0/js/src/assembler/wtf/Platform.h	2013-02-11 16:33:22.000000000 -0600
++++ src/mozjs17.0.0/js/src/assembler/wtf/Platform.h	2014-07-27 23:55:08.714413700 -0500
+@@ -375,6 +375,11 @@
+ #define WTF_OS_AIX 1
+ #endif
+ 
++/* WTF_OS_CYGWIN - Cygwin */
++#ifdef __CYGWIN__
++#define WTF_OS_CYGWIN 1
++#endif
++
+ /* WTF_OS_DARWIN - Any Darwin-based OS, including Mac OS X and iPhone OS */
+ #ifdef __APPLE__
+ #define WTF_OS_DARWIN 1
+@@ -463,6 +468,7 @@
+ /* WTF_OS_UNIX - Any Unix-like system */
+ #if   WTF_OS_AIX              \
+     || WTF_OS_ANDROID          \
++    || WTF_OS_CYGWIN           \
+     || WTF_OS_DARWIN           \
+     || WTF_OS_FREEBSD          \
+     || WTF_OS_HAIKU            \
+@@ -1120,7 +1126,7 @@
+ /* Pick which allocator to use; we only need an executable allocator if the assembler is compiled in.
+    On x86-64 we use a single fixed mmap, on other platforms we mmap on demand. */
+ #if ENABLE_ASSEMBLER
+-#if WTF_CPU_X86_64
++#if WTF_CPU_X86_64 && !WTF_OS_CYGWIN
+ #define ENABLE_EXECUTABLE_ALLOCATOR_FIXED 1
+ #else
+ #define ENABLE_EXECUTABLE_ALLOCATOR_DEMAND 1
+--- origsrc/mozjs17.0.0/js/src/gc/Heap.h	2014-03-23 18:08:19.556874700 -0500
++++ src/mozjs17.0.0/js/src/gc/Heap.h	2014-07-28 00:01:29.830809300 -0500
+@@ -113,7 +113,7 @@ struct Cell
+ #if defined(SOLARIS) && (defined(__sparc) || defined(__sparcv9))
+ const size_t PageShift = 13;
+ const size_t ArenaShift = PageShift;
+-#elif defined(__powerpc__)
++#elif defined(__powerpc__) || defined(__CYGWIN__)
+ const size_t PageShift = 16;
+ const size_t ArenaShift = 12;
+ #else
+--- origsrc/mozjs17.0.0/js/src/methodjit/BaseAssembler.h	2013-02-11 16:33:23.000000000 -0600
++++ src/mozjs17.0.0/js/src/methodjit/BaseAssembler.h	2014-03-23 18:08:25.379207700 -0500
+@@ -496,7 +496,7 @@ static const JSC::MacroAssembler::Regist
+     // be necessary to jump directly to JaegerThrowpoline. In this case,
+     // the constant is provided here in order to appropriately adjust the
+     // stack.
+-#ifdef _WIN64
++#if defined(JS_CPU_x64) && (defined(_WIN64) || defined(__CYGWIN__))
+     static const uint32_t ReturnStackAdjustment = 32;
+ #elif defined(JS_CPU_X86) && defined(JS_NO_FASTCALL)
+     static const uint32_t ReturnStackAdjustment = 16;
+@@ -512,7 +512,7 @@ static const JSC::MacroAssembler::Regist
+     }
+ 
+     // Windows x64 requires extra space in between calls.
+-#ifdef _WIN64
++#if defined(JS_CPU_x64) && (defined(_WIN64) || defined(__CYGWIN__))
+     static const uint32_t ShadowStackSpace = 32;
+ #elif defined(JS_CPU_SPARC)
+     static const uint32_t ShadowStackSpace = 92;
+@@ -557,7 +557,7 @@ static const JSC::MacroAssembler::Regist
+         stackAdjust = (pushCount * sizeof(void *)) +
+                       alignForCall(total);
+ 
+-#ifdef _WIN64
++#if defined(JS_CPU_x64) && (defined(_WIN64) || defined(__CYGWIN__))
+         // Windows x64 ABI requires 32 bytes of "shadow space" for the callee
+         // to spill its parameters.
+         stackAdjust += ShadowStackSpace;
+--- origsrc/mozjs17.0.0/js/src/methodjit/MachineRegs.h	2013-02-11 16:33:23.000000000 -0600
++++ src/mozjs17.0.0/js/src/methodjit/MachineRegs.h	2014-03-23 18:08:25.385208100 -0500
+@@ -96,7 +96,7 @@ struct Registers {
+ 
+ #if defined(JS_CPU_X86) || defined(JS_CPU_X64)
+     static const RegisterID ReturnReg = JSC::X86Registers::eax;
+-# if defined(JS_CPU_X86) || defined(_WIN64)
++# if defined(JS_CPU_X86) || defined(_WIN64) || defined(__CYGWIN__)
+     static const RegisterID ArgReg0 = JSC::X86Registers::ecx;
+     static const RegisterID ArgReg1 = JSC::X86Registers::edx;
+ #  if defined(JS_CPU_X64)
+@@ -155,7 +155,7 @@ struct Registers {
+ # if defined(JS_CPU_X64)
+         | (1 << JSC::X86Registers::r8)
+         | (1 << JSC::X86Registers::r9)
+-#  if !defined(_WIN64)
++#  if !defined(_WIN64) && !defined(__CYGWIN__)
+         | (1 << JSC::X86Registers::esi)
+         | (1 << JSC::X86Registers::edi)
+ #  endif
+@@ -169,7 +169,7 @@ struct Registers {
+     // r13 is TypeMaskReg.
+     // r14 is PayloadMaskReg.
+         | (1 << JSC::X86Registers::r15)
+-#  if defined(_WIN64)
++#  if defined(_WIN64) || defined(__CYGWIN__)
+         | (1 << JSC::X86Registers::esi)
+         | (1 << JSC::X86Registers::edi)
+ #  endif
+@@ -281,7 +281,7 @@ struct Registers {
+         return (convention == FastCall) ? 2 : 0;
+ # endif
+ #elif defined(JS_CPU_X64)
+-# ifdef _WIN64
++# if defined(_WIN64) || defined(__CYGWIN__)
+         return 4;
+ # else
+         return 6;
+@@ -309,7 +309,7 @@ struct Registers {
+             return false;
+ # endif
+ #elif defined(JS_CPU_X64)
+-# ifdef _WIN64
++# if defined(_WIN64) || defined(__CYGWIN__)
+         static const RegisterID regs[] = {
+             JSC::X86Registers::ecx,
+             JSC::X86Registers::edx,
+@@ -362,7 +362,7 @@ struct Registers {
+     typedef JSC::MacroAssembler::FPRegisterID FPRegisterID;
+ 
+ #if defined(JS_CPU_X86) || defined(JS_CPU_X64)
+-#ifdef _WIN64
++# if defined(_WIN64) || (defined(__CYGWIN__) && defined(JS_CPU_X64))
+     /* xmm0-xmm5 are scratch register on Win64 ABI */
+     static const uint32_t TotalFPRegisters = 5;
+     static const FPRegisterID FPConversionTemp = JSC::X86Registers::xmm5;
+@@ -376,7 +376,7 @@ struct Registers {
+         | (1 << JSC::X86Registers::xmm2)
+         | (1 << JSC::X86Registers::xmm3)
+         | (1 << JSC::X86Registers::xmm4)
+-#ifndef _WIN64
++#if !defined(_WIN64) && !defined(__CYGWIN__)
+         | (1 << JSC::X86Registers::xmm5)
+         | (1 << JSC::X86Registers::xmm6)
+ #endif
+--- origsrc/mozjs17.0.0/js/src/methodjit/MethodJIT.cpp	2013-02-11 16:33:23.000000000 -0600
++++ src/mozjs17.0.0/js/src/methodjit/MethodJIT.cpp	2014-03-23 18:08:25.402209100 -0500
+@@ -127,7 +127,7 @@ PopActiveVMFrame(VMFrame &f)
+     f.cx->stack.repointRegs(f.oldregs);
+ }
+ 
+-#if defined(__APPLE__) || (defined(XP_WIN) && !defined(JS_CPU_X64)) || defined(XP_OS2)
++#if defined(__APPLE__) || ((defined(__CYGWIN__) || defined(XP_WIN)) && !defined(JS_CPU_X64)) || defined(XP_OS2)
+ # define SYMBOL_STRING(name) "_" #name
+ #else
+ # define SYMBOL_STRING(name) #name
+@@ -218,7 +218,7 @@ JS_STATIC_ASSERT(offsetof(FrameRegs, sp)
+  * having our CFI apply starting at that nop.
+  */
+ 
+-#if defined(__GNUC__) && !defined(_WIN64)
++#if defined(__GNUC__) && !defined(_WIN64) && !(defined(__CYGWIN__) && defined(__x86_64__))
+ 
+ /* If this assert fails, you need to realign VMFrame to 16 bytes. */
+ #if defined(JS_CPU_ARM) || defined(JS_CPU_MIPS) || defined(JS_CPU_SPARC)
+--- origsrc/mozjs17.0.0/js/src/methodjit/MethodJIT.h	2013-02-11 16:33:23.000000000 -0600
++++ src/mozjs17.0.0/js/src/methodjit/MethodJIT.h	2014-03-23 18:08:25.422210200 -0500
+@@ -141,7 +141,7 @@ struct VMFrame
+ 
+ #elif defined(JS_CPU_X64)
+     void *savedRBX;
+-# ifdef _WIN64
++# if defined(_WIN64) || defined(__CYGWIN__)
+     void *savedRSI;
+     void *savedRDI;
+ # endif
+@@ -152,7 +152,7 @@ struct VMFrame
+     void *savedRBP;
+     void *savedRIP;
+ 
+-# ifdef _WIN64
++# if defined(_WIN64) || defined(__CYGWIN__)
+     inline void** returnAddressLocation() {
+         return reinterpret_cast<void**>(this) - 5;
+     }
+@@ -397,7 +397,7 @@ struct Trampolines {
+     TrampolinePtr       forceReturn;
+     JSC::ExecutablePool *forceReturnPool;
+ 
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+     TrampolinePtr       forceReturnFast;
+     JSC::ExecutablePool *forceReturnFastPool;
+ #endif
+@@ -499,7 +499,7 @@ class JaegerRuntime
+      * fastcall function's return address to the value this method returns.
+      */
+     void *forceReturnFromFastCall() const {
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+         return JS_FUNC_TO_DATA_PTR(void *, trampolines.forceReturnFast);
+ #else
+         return JS_FUNC_TO_DATA_PTR(void *, trampolines.forceReturn);
+@@ -1045,7 +1045,7 @@ extern "C" void *JaegerThrowpoline(js::V
+ extern "C" void JaegerThrowpoline();
+ #endif
+ 
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+ extern "C" void JaegerInterpolinePatched();
+ #endif
+ 
+--- origsrc/mozjs17.0.0/js/src/methodjit/Retcon.cpp	2013-02-11 16:33:23.000000000 -0600
++++ src/mozjs17.0.0/js/src/methodjit/Retcon.cpp	2014-03-23 18:08:25.441211300 -0500
+@@ -108,7 +108,7 @@ Recompiler::patchNative(JSCompartment *c
+ 
+         /* Patch the native fallthrough to go to the interpoline. */
+         {
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+             /* Win64 needs stack adjustment */
+             void *interpoline = JS_FUNC_TO_DATA_PTR(void *, JaegerInterpolinePatched);
+ #else
+@@ -208,7 +208,7 @@ JITCodeReturnAddress(void *data)
+     return data != NULL  /* frame is interpreted */
+         && data != JS_FUNC_TO_DATA_PTR(void *, JaegerTrampolineReturn)
+         && data != JS_FUNC_TO_DATA_PTR(void *, JaegerInterpoline)
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+         && data != JS_FUNC_TO_DATA_PTR(void *, JaegerInterpolinePatched)
+ #endif
+         && data != JS_FUNC_TO_DATA_PTR(void *, JaegerInterpolineScripted);
+--- origsrc/mozjs17.0.0/js/src/methodjit/TrampolineCompiler.cpp	2013-02-11 16:33:23.000000000 -0600
++++ src/mozjs17.0.0/js/src/methodjit/TrampolineCompiler.cpp	2014-03-23 18:08:25.463212500 -0500
+@@ -37,7 +37,7 @@ TrampolineCompiler::compile()
+ #endif
+ 
+     COMPILE(trampolines->forceReturn, trampolines->forceReturnPool, generateForceReturn);
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+     COMPILE(trampolines->forceReturnFast, trampolines->forceReturnFastPool, generateForceReturnFast);
+ #endif
+ 
+@@ -48,7 +48,7 @@ void
+ TrampolineCompiler::release(Trampolines *tramps)
+ {
+     RELEASE(tramps->forceReturn, tramps->forceReturnPool);
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+     RELEASE(tramps->forceReturnFast, tramps->forceReturnFastPool);
+ #endif
+ }
+@@ -105,11 +105,11 @@ TrampolineCompiler::generateForceReturn(
+     return true;
+ }
+ 
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+ bool
+ TrampolineCompiler::generateForceReturnFast(Assembler &masm)
+ {
+-#ifdef _WIN64
++#if defined(_WIN64) || (defined(__CYGWIN__) && defined(JS_CPU_X64))
+     masm.addPtr(Imm32(32), Registers::StackPointer);
+ #else
+     // In case of no fast call, when we change the return address,
+--- origsrc/mozjs17.0.0/js/src/methodjit/TrampolineCompiler.h	2013-02-11 16:33:23.000000000 -0600
++++ src/mozjs17.0.0/js/src/methodjit/TrampolineCompiler.h	2014-03-23 18:08:25.480213500 -0500
+@@ -33,7 +33,7 @@ private:
+     /* Generators for trampolines. */
+     static bool generateForceReturn(Assembler &masm);
+ 
+-#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64)
++#if (defined(JS_NO_FASTCALL) && defined(JS_CPU_X86)) || defined(_WIN64) || (defined(__CYGWIN__) && defined(__x86_64__))
+     static bool generateForceReturnFast(Assembler &masm);
+ #endif
+ 
+--- origsrc/mozjs17.0.0/js/src/yarr/YarrJIT.cpp	2013-02-11 16:33:23.000000000 -0600
++++ src/mozjs17.0.0/js/src/yarr/YarrJIT.cpp	2014-07-27 23:59:56.771492300 -0500
+@@ -92,7 +92,7 @@ class YarrGenerator : private MacroAssem
+ 
+     static const RegisterID returnRegister = X86Registers::eax;
+ #elif WTF_CPU_X86_64
+-#if WTF_PLATFORM_WIN
++#if WTF_PLATFORM_WIN || WTF_OS_CYGWIN
+     static const RegisterID input = X86Registers::ecx;
+     static const RegisterID index = X86Registers::edx;
+     static const RegisterID length = X86Registers::r8;

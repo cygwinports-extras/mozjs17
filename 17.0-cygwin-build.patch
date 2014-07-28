@@ -1,0 +1,173 @@
+--- origsrc/mozjs17.0.0/js/src/Makefile.in	2013-03-25 15:34:20.000000000 -0500
++++ src/mozjs17.0.0/js/src/Makefile.in	2014-07-28 00:05:37.393245800 -0500
+@@ -260,7 +260,7 @@ ifeq (x86_64, $(TARGET_CPU))
+ ifdef _MSC_VER
+ ASFILES +=	TrampolineMasmX64.asm
+ endif
+-ifeq ($(OS_ARCH),WINNT)
++ifneq (,$(filter Cygwin WINNT,$(OS_ARCH)))
+ ifdef GNU_CC
+ ASFILES +=	TrampolineMingwX64.s
+ endif
+@@ -419,7 +419,7 @@ EXPORTS = $(INSTALLED_HEADERS)
+ 
+ DASH_R		= -r
+ 
+-ifneq (,$(filter OS2 WINNT,$(OS_ARCH)))
++ifneq (,$(filter Cygwin OS2 WINNT,$(OS_ARCH)))
+ SDK_LIBRARY = $(IMPORT_LIBRARY)
+ else
+ SDK_LIBRARY = $(SHARED_LIBRARY)
+@@ -478,7 +478,7 @@ endif
+ 
+ default::
+ 
+-ifneq (,$(CROSS_COMPILE)$(filter-out WINNT OS2,$(OS_ARCH)))
++ifneq (,$(CROSS_COMPILE)$(filter-out Cygwin WINNT OS2,$(OS_ARCH)))
+ # nsinstall doesn't get built until we enter config/ in the exports phase,
+ # so we'll have to manually ensure it gets built here if we want to use
+ # $(EXPORTS)
+--- origsrc/mozjs17.0.0/js/src/config/rules.mk	2013-02-20 17:17:12.000000000 -0600
++++ src/mozjs17.0.0/js/src/config/rules.mk	2014-03-23 18:08:25.355206400 -0500
+@@ -156,7 +156,7 @@ ifdef LIB_IS_C_ONLY
+ MKSHLIB			= $(MKCSHLIB)
+ endif
+ 
+-ifneq (,$(filter OS2 WINNT,$(OS_ARCH)))
++ifneq (,$(filter Cygwin OS2 WINNT,$(OS_ARCH)))
+ IMPORT_LIBRARY		:= $(LIB_PREFIX)$(SHARED_LIBRARY_NAME).$(IMPORT_LIB_SUFFIX)
+ endif
+ 
+@@ -520,7 +520,7 @@ endif
+ #
+ # MINGW32
+ #
+-ifeq ($(OS_ARCH),WINNT)
++ifneq (,$(filter Cygwin WINNT,$(OS_ARCH)))
+ ifdef GNU_CC
+ ifndef IS_COMPONENT
+ DSO_LDOPTS += -Wl,--out-implib -Wl,$(IMPORT_LIBRARY)
+@@ -837,7 +837,7 @@ $(filter-out %.$(LIB_SUFFIX),$(LIBRARY))
+ 	$(if $(filter %.$(LIB_SUFFIX),$(LIBRARY)),,$(RM) $(REAL_LIBRARY) $(EXPORT_LIBRARY:%=%/$(REAL_LIBRARY)))
+ 	$(EXPAND_LIBS_GEN) -o $@ $(OBJS) $(LOBJS) $(SHARED_LIBRARY_LIBS)
+ 
+-ifeq ($(OS_ARCH),WINNT)
++ifneq (,$(filter Cygwin WINNT,$(OS_ARCH)))
+ $(IMPORT_LIBRARY): $(SHARED_LIBRARY)
+ endif
+ 
+--- origsrc/mozjs17.0.0/js/src/configure.in	2013-03-25 15:34:20.000000000 -0500
++++ src/mozjs17.0.0/js/src/configure.in	2014-03-23 18:08:25.362206800 -0500
+@@ -936,6 +936,7 @@ if test -n "$CROSS_COMPILE"; then
+         kfreebsd*-gnu) OS_ARCH=GNU_kFreeBSD OS_TARGET=GNU_kFreeBSD ;;
+         gnu*)         OS_ARCH=GNU ;;
+         solaris*)     OS_ARCH=SunOS OS_RELEASE=5 ;;
++        cygwin*)      OS_ARCH=Cygwin OS_TARGET=Cygwin ;;
+         mingw*)       OS_ARCH=WINNT OS_TARGET=WINNT ;;
+         darwin*)      OS_ARCH=Darwin OS_TARGET=Darwin ;;
+     esac
+@@ -974,6 +975,9 @@ HOST_OS_ARCH=`echo $host_os | sed -e 's|
+ #
+ 
+ case "$HOST_OS_ARCH" in
++cygwin*)
++    HOST_OS_ARCH=Cygwin
++    ;;
+ mingw*)
+     HOST_OS_ARCH=WINNT
+     ;;
+@@ -1041,6 +1045,11 @@ MINGW*_NT*)
+     OS_ARCH=WINNT
+     OS_TARGET=WINNT
+     ;;
++Cygwin*|CYGWIN_NT*)
++    OS_RELEASE=1.7
++    OS_ARCH=Cygwin
++    OS_TARGET=Cygwin
++    ;;
+ AIX)
+     OS_RELEASE=`uname -v`.`uname -r`
+     OS_TEST=${target_cpu}
+@@ -1448,6 +1457,11 @@ dnl ====================================
+ dnl System overrides of the defaults for host
+ dnl ========================================================
+ case "$host" in
++*cygwin*)
++    HOST_CFLAGS="$HOST_CFLAGS -DXP_UNIX"
++    HOST_OPTIMIZE_FLAGS="${HOST_OPTIMIZE_FLAGS=-O2}"
++    HOST_BIN_SUFFIX=.exe
++    ;;
+ *mingw*)
+     # we need Python 2.5 on Windows
+     PYTHON_VERSION=2.5
+@@ -1754,6 +1768,18 @@ ia64*-hpux*)
+     fi
+     ;;
+ 
++*-cygwin*)
++    DSO_CFLAGS=
++    DSO_PIC_CFLAGS=
++    BIN_SUFFIX=.exe
++    DLL_PREFIX=cyg
++    DLL_SUFFIX=.dll
++    IMPORT_LIB_SUFFIX=dll.a
++    DSO_LDOPTS='-shared'
++    MKSHLIB='$(CXX) $(DSO_LDOPTS) -o $@'
++    MKCSHLIB='$(CC) $(DSO_LDOPTS) -o $@'
++    ;;
++
+ *-mingw*)
+     DSO_CFLAGS=
+     DSO_PIC_CFLAGS=
+@@ -1893,7 +1919,7 @@ ia64*-hpux*)
+     esac
+ 
+     case "$host_os" in
+-    cygwin*|msvc*|mks*)
++    msvc*|mks*)
+         AC_MSG_ERROR([Using a Cygwin build environment is unsupported. Configure cannot check for presence of necessary headers. Please upgrade to MozillaBuild; see https://developer.mozilla.org/en/Windows_Build_Prerequisites.])
+         ;;
+     esac
+@@ -2804,17 +2830,21 @@ AC_CHECK_FUNCS([fchmod flockfile getc_un
+                 stat64 statvfs statvfs64 strerror strtok_r truncate64])
+ 
+ dnl Windows functions, for mingw.
++if test -z "$ac_cv_have_systemtimetofiletime"; then
+ AC_TRY_LINK([#include <windows.h>],
+              [SYSTEMTIME st;FILETIME ft;SystemTimeToFileTime(&st,&ft);],
+              ac_cv_have_systemtimetofiletime="yes",
+              ac_cv_have_systemtimetofiletime="no")
++fi
+ if test "$ac_cv_have_systemtimetofiletime" = "yes"; then
+     AC_DEFINE(HAVE_SYSTEMTIMETOFILETIME)
+ fi
++if test -z "$ac_cv_have_getsystemtimeasfiletime"; then
+ AC_TRY_LINK([#include <windows.h>],
+              [FILETIME ft;GetSystemTimeAsFileTime(&ft);],
+              ac_cv_have_getsystemtimeasfiletime="yes",
+              ac_cv_have_getsystemtimeasfiletime="no")
++fi
+ if test "$ac_cv_have_getsystemtimeasfiletime" = "yes"; then
+     AC_DEFINE(HAVE_GETSYSTEMTIMEASFILETIME)
+ fi
+--- origsrc/mozjs17.0.0/js/src/jsdtoa.cpp	2013-02-11 16:33:22.000000000 -0600
++++ src/mozjs17.0.0/js/src/jsdtoa.cpp	2014-03-23 18:08:25.374207500 -0500
+@@ -7,6 +7,7 @@
+ /*
+  * Portable double to alphanumeric string and back converters.
+  */
++#define __STRICT_ANSI__
+ #include "jstypes.h"
+ #include "jsdtoa.h"
+ #include "jsprf.h"
+--- origsrc/mozjs17.0.0/js/src/shell/Makefile.in	2013-03-25 15:34:20.000000000 -0500
++++ src/mozjs17.0.0/js/src/shell/Makefile.in	2014-07-28 00:16:12.852438800 -0500
+@@ -23,7 +23,7 @@ DEFINES         += -DEXPORT_JS_API
+ # on its behalf.
+ DEFINES         += -DIMPL_MFBT
+ 
+-LIBS      = $(NSPR_LIBS) $(EDITLINE_LIBS) $(DEPTH)/$(LIB_PREFIX)js_static.$(LIB_SUFFIX) $(MOZ_ZLIB_LIBS)
++LIBS      = $(DEPTH)/$(LIB_PREFIX)js_static.$(LIB_SUFFIX) $(NSPR_LIBS) $(EDITLINE_LIBS) $(MOZ_ZLIB_LIBS)
+ ifdef MOZ_NATIVE_FFI
+ EXTRA_LIBS += $(MOZ_FFI_LIBS)
+ endif

@@ -1,0 +1,55 @@
+NAME="mozjs17"
+VERSION=17.0.0
+RELEASE=1
+CATEGORY="Libs"
+SUMMARY="Mozilla JavaScript engine"
+DESCRIPTION="SpiderMonkey is Mozilla's JavaScript engine written in C/C++."
+HOMEPAGE="http://www.mozilla.org/js/spidermonkey/"
+SRC_URI="ftp://ftp.mozilla.org/pub/mozilla.org/js/mozjs${VERSION}.tar.gz"
+SRC_DIR="mozjs${VERSION}/js/src"
+PATCH_URI="
+	http://pkgs.fedoraproject.org/cgit/mozjs17.git/plain/js17-jsval.patch
+	http://pkgs.fedoraproject.org/cgit/mozjs17.git/plain/mozbug746112-no-decommit-on-large-pages.patch
+	17.0-cygwin-build.patch
+	17.0-cygwin-jit.patch
+"
+
+PKG_NAMES="mozjs17 libmozjs17.0 libmozjs17.0-devel"
+mozjs17_CATEGORY="Interpreters"
+mozjs17_CONTENTS="usr/bin/js17.exe"
+libmozjs17_0_SUMMARY="${SUMMARY} (runtime)"
+libmozjs17_0_CONTENTS="usr/bin/cygmozjs-17.0.dll usr/share/doc/"
+libmozjs17_0_devel_SUMMARY="${SUMMARY} (development)"
+libmozjs17_0_devel_CONTENTS="usr/bin/js17-config usr/include/js-17.0/
+	usr/lib/libmozjs-17.0.dll.a usr/lib/pkgconfig/mozjs-17.0.pc"
+
+DIFF_EXCLUDES="configure"
+
+src_compile() {
+	cd ${S}
+	autoconf-2.13 || error
+	cd ${B}
+
+	manifestize config/nsinstall.exe
+
+	export ac_cv_have_systemtimetofiletime=no
+	export ac_cv_have_getsystemtimeasfiletime=no
+
+	cygconf --enable-ctypes --enable-readline --enable-threadsafe \
+		--with-system-nspr --enable-system-ffi
+	cygmake
+}
+
+src_test() {
+	cd ${B}
+	./jsapi-tests/jsapi-tests
+}
+
+src_install() {
+	cd ${B}
+	cyginstall
+
+	mv ${D}/usr/lib/*.dll ${D}/usr/bin/
+	rm ${D}/usr/lib/libmozjs-17.0.a
+}
+DOCS="../../LICENSE ../../README"
